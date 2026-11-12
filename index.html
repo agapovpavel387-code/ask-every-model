@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ask Every Model — one question, many models</title>
+<style>
+  :root { --ink:#14161a; --muted:#6b7280; --line:#e5e7eb; --accent:#ffd41f; --bg:#fbfbfc; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+  header { padding:28px 24px 12px; max-width:1080px; margin:0 auto; }
+  h1 { margin:0 0 4px; font-size:28px; letter-spacing:-0.02em; }
+  .tagline { color:var(--muted); margin:0; }
+  main { max-width:1080px; margin:0 auto; padding:0 24px 48px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:20px 0 14px; }
+  button { font:600 14px system-ui; padding:9px 16px; border:1px solid #b89500; border-radius:8px; background:var(--accent); color:#111; cursor:pointer; }
+  button.secondary { background:#fff; border-color:var(--line); font-weight:500; }
+  button:hover { filter:brightness(1.03); }
+  button:disabled { opacity:.55; cursor:default; }
+  .who { color:var(--muted); font-size:14px; }
+  textarea { width:100%; min-height:76px; padding:12px 14px; font:16px/1.5 inherit; border:1px solid var(--line); border-radius:10px; resize:vertical; background:#fff; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+  .chip { display:inline-flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid var(--line); border-radius:999px; background:#fff; font-size:13px; cursor:pointer; user-select:none; }
+  .chip input { accent-color:#b89500; margin:0; }
+  .note { color:var(--muted); font-size:13px; margin:6px 0 18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,24,40,.04); display:flex; flex-direction:column; }
+  .card h3 { margin:0 0 2px; font-size:15px; }
+  .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
+  .answer { white-space:pre-wrap; margin:0; flex:1; }
+  .card.bad .answer { color:#b02a2a; }
+  .exlabel { display:inline-block; font-size:12px; color:#7a5c00; background:#fff7d6; border:1px solid #f0e0a0; border-radius:999px; padding:3px 10px; margin-bottom:12px; }
+  footer { max-width:1080px; margin:0 auto; padding:0 24px 40px; color:var(--muted); font-size:14px; }
+  a { color:#0b6bcb; }
+  .hint { font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ask Every Model</h1>
+  <p class="tagline">One question, every text model on Pollinations, side by side — paid from your own Pollen.</p>
+</header>
+
+<main>
+  <div class="bar">
+    <button id="signin">Sign in with Pollinations</button>
+    <button id="signout" class="secondary" hidden>Sign out</button>
+    <span class="who" id="who"></span>
+  </div>
+
+  <textarea id="question" placeholder="Ask something you want several models to answer…">Is a hotdog a sandwich? One sentence.</textarea>
+  <div class="chips" id="chips"></div>
+  <div class="bar">
+    <button id="ask">Ask the selected models</button>
+    <button id="reset" class="secondary">Show the example run</button>
+    <span class="hint" id="status"></span>
+  </div>
+  <p class="note">Each request is billed to <b>your</b> API key (Bring Your Own Pollen). Models that need paid Pollen answer with a notice instead.</p>
+
+  <div id="exampleLabel" class="exlabel">Example run — real answers, fetched once by the maintainer. Sign in to ask your own question.</div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<footer>
+  Built on <a href="https://pollinations.ai/?ref=badge">pollinations.ai</a> ·
+  <a href="https://github.com/agapovpavel387-code/ask-every-model">source</a> ·
+  <a href="https://gen.pollinations.ai/docs">API docs</a>
+</footer>
+
+<script>
+const CLIENT_ID = "pk_ACX1OYINVREl22hK"; // publishable App Key: names the app on the consent screen, cannot spend
+const REDIRECT_URI = new URL("callback.html", location.href).toString();
+const AUTHORIZE = "https://enter.pollinations.ai/authorize";
+const TOKEN_KEY = "aem_token";
+const DEFAULT_MODELS = [
+  "openai/gpt-5.4-nano",
+  "deepseek/deepseek-v4.1-flash",
+  "minimax/minimax-m3.1-flash",
+  "moonshotai/kimi-k3.1-pro",
+  "inception/mercury-3",
+  "qwen/qwen3.8-flash",
+  "z-ai/glm-5.3-flashx",
+  "openai/gpt-4o-mini",
+];
+const grid = document.getElementById("grid");
+const statusEl = document.getElementById("status");
+const whoEl = document.getElementById("who");
+const chipsEl = document.getElementById("chips");
+const exampleLabel = document.getElementById("exampleLabel");
+const token = () => sessionStorage.getItem(TOKEN_KEY) || "";
+
+function setStatus(text) { statusEl.textContent = text || ""; }
+
+/* ---------- models ---------- */
+let catalog = new Map();
+async function loadCatalog() {
+  try {
+    const res = await fetch("https://gen.pollinations.ai/models?type=text");
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : data.data || [];
+    list.forEach((m) => catalog.set(m.name, m));
+  } catch { /* the picker still works with the defaults */ }
+}
+function modelTitle(id) { return catalog.get(id)?.title || id.split("/").pop(); }
+function modelCost(id, usage) {
+  const p = catalog.get(id)?.pricing;
+  if (!p || !usage) return "";
+  const inRate = Number(p.promptTextTokens || 0), outRate = Number(p.completionTextTokens || 0);
+  const cost = usage.prompt_tokens * inRate + usage.completion_tokens * outRate;
+  return cost > 0 ? `${cost.toFixed(5)} Pollen` : "";
+}
+function renderChips(selected) {
+  chipsEl.innerHTML = "";
+  DEFAULT_MODELS.forEach((id) => {
+    const label = document.createElement("label");
+    label.className = "chip";
+    const box = document.createElement("input");
+    box.type = "checkbox"; box.value = id; box.checked = selected.includes(id);
+    label.append(box, document.createTextNode(modelTitle(id)));
+    chipsEl.append(label);
+  });
+}
+const selectedModels = () => [...chipsEl.querySelectorAll("input:checked")].map((b) => b.value);
+
+/* ---------- rendering ---------- */
+function card(model, body, meta, bad) {
+  const el = document.createElement("article");
+  el.className = "card" + (bad ? " bad" : "");
+  const h = document.createElement("h3"); h.textContent = modelTitle(model);
+  const m = document.createElement("div"); m.className = "meta"; m.textContent = meta;
+  const p = document.createElement("p"); p.className = "answer"; p.textContent = body;
+  el.append(h, m, p);
+  return el;
+}
+function renderRun(run, isExample) {
+  grid.innerHTML = "";
+  exampleLabel.hidden = !isExample;
+  run.models.forEach((r) => {
+    const meta = r.error ? r.error : `${r.ms} ms${r.usage ? ` · ${r.usage.total_tokens} tokens` : ""}${modelCost(r.model, r.usage) ? ` · ${modelCost(r.model, r.usage)}` : ""}`;
+    grid.append(card(r.model, r.answer || r.error || "(no answer)", meta, Boolean(r.error)));
+  });
+}
+
+/* ---------- asking ---------- */
+async function askModel(model, question, key) {
+  const started = Date.now();
+  try {
+    const res = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: [
+        { role: "system", content: "Answer in one short paragraph. No preamble." },
+        { role: "user", content: question }], max_tokens: 400 }),
+    });
+    const ms = Date.now() - started;
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const e = await res.json(); msg = e?.error?.message || msg; } catch {}
+      return { model, error: msg, ms };
+    }
+    const data = await res.json();
+    return { model, answer: data.choices?.[0]?.message?.content?.trim() || "(empty answer)", ms, usage: data.usage };
+  } catch (e) {
+    return { model, error: e.message, ms: Date.now() - started };
+  }
+}
+
+async function run() {
+  const question = document.getElementById("question").value.trim();
+  const key = token();
+  const models = selectedModels();
+  if (!key) return setStatus("Sign in first — the question runs on your own Pollen.");
+  if (!question) return setStatus("Type a question first.");
+  if (!models.length) return setStatus("Pick at least one model.");
+  document.getElementById("ask").disabled = true;
+  setStatus(`Asking ${models.length} model${models.length > 1 ? "s" : ""}…`);
+  renderRun({ models: models.map((m) => ({ model: m, answer: "…", ms: 0 })) }, false);
+  const results = await Promise.all(models.map((m) => askModel(m, question, key)));
+  renderRun({ question, models: results }, false);
+  setStatus("");
+  document.getElementById("ask").disabled = false;
+}
+
+/* ---------- auth (OAuth code flow with PKCE, browser-side) ---------- */
+function base64url(bytes) {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function signIn() {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
+  const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
+  const challenge = base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  sessionStorage.setItem("aem_verifier", verifier);
+  sessionStorage.setItem("aem_state", state);
+  const url = new URL(AUTHORIZE);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", CLIENT_ID);
+  url.searchParams.set("redirect_uri", REDIRECT_URI);
+  url.searchParams.set("scope", "profile usage");
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  url.searchParams.set("budget", "2");
+  url.searchParams.set("expiry", "7");
+  location.href = url.toString();
+}
+async function whoAmI() {
+  const key = token();
+  if (!key) { whoEl.textContent = ""; document.getElementById("signin").hidden = false; document.getElementById("signout").hidden = true; return; }
+  document.getElementById("signin").hidden = true;
+  document.getElementById("signout").hidden = false;
+  try {
+    const [me, bal] = await Promise.all([
+      fetch("https://enter.pollinations.ai/api/device/userinfo", { headers: { Authorization: `Bearer ${key}` } }).then((r) => (r.ok ? r.json() : null)),
+      fetch("https://gen.pollinations.ai/account/balance", { headers: { Authorization: `Bearer ${key}` } }).then((r) => (r.ok ? r.json() : null)),
+    ]);
+    const name = me?.preferred_username ? "@" + me.preferred_username : "signed in";
+    const pollen = bal ? `${Number(bal.balance).toFixed(2)} Pollen left` : "";
+    whoEl.textContent = [name, pollen].filter(Boolean).join(" · ");
+  } catch { whoEl.textContent = "signed in"; }
+}
+
+/* ---------- boot ---------- */
+(async function boot() {
+  await loadCatalog();
+  renderChips(DEFAULT_MODELS.slice(0, 5));
+  document.getElementById("signin").onclick = signIn;
+  document.getElementById("signout").onclick = () => { sessionStorage.removeItem(TOKEN_KEY); whoAmI(); };
+  document.getElementById("ask").onclick = run;
+  document.getElementById("reset").onclick = showExample;
+  whoAmI();
+  showExample();
+})();
+async function showExample() {
+  try {
+    const res = await fetch("demo.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error("no example");
+    renderRun(await res.json(), true);
+  } catch {
+    exampleLabel.hidden = true;
+    grid.innerHTML = "";
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+{
+  "question": "Is a hotdog a sandwich? One sentence.",
+  "ranAt": "2026-11-12T10:26:08.885Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.4-nano",
+      "answer": "A hot dog is generally considered a type of sandwich since it’s a filling served in a sliced bread roll, though it’s also often treated as a distinct category.",
+      "ms": 692,
+      "usage": {
+        "completion_tokens": 36,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "latency_checkpoint": {
+          "engine_tbt_ms": 9,
+          "engine_ttft_ms": 33,
+          "engine_ttlt_ms": 357,
+          "pre_inference_ms": 78,
+          "service_tbt_ms": 10,
+          "service_ttft_ms": 499,
+          "service_ttlt_ms": 851,
+          "user_visible_ttft_ms": 421
+        },
+        "prompt_tokens": 30,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        },
+        "total_tokens": 66
+      }
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "answer": "By the broad definition of a sandwich as filling between bread, a hot dog in a bun qualifies, though common usage often treats it as its own category.",
+      "ms": 889,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 113,
+        "total_tokens": 162,
+        "audio_prompt_tokens": 0
+      }
+    },
+    {
+      "model": "minimax/minimax-m3.1-flash",
+      "answer": "Legally debatable, but a hot dog consists of meat (or meat substitute) between two pieces of bread, so many—including David Grin in court—argue yes.",
+      "ms": 3066,
+      "usage": {
+        "prompt_tokens": 213,
+        "total_tokens": 296,
+        "completion_tokens": 83,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 46
+        },
+        "output_tokens_details": {
+          "reasoning_tokens": 46
+        }
+      }
+    },
+    {
+      "model": "moonshotai/kimi-k3.1-pro",
+      "answer": "Technically yes—a hot dog fits the broad definition of a sandwich, though its hinged bun makes it famously debatable.",
+      "ms": 4528,
+      "usage": {
+        "prompt_tokens": 115,
+        "completion_tokens": 194,
+        "total_tokens": 309,
+        "audio_prompt_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 160
+        }
+      }
+    }
+  ]
+}
